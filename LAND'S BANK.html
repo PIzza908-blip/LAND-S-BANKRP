@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Банк | Виртуальная Валюта</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #111;
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+    input, button {
+      padding: 10px;
+      margin: 5px;
+      font-size: 16px;
+    }
+    .balance {
+      font-size: 24px;
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>💰 Виртуальный Банк</h1>
+
+  <div>
+    <label>Ваш Telegram ник (с @):</label>
+    <input type="text" id="username" placeholder="@username">
+    <button onclick="loadBalance()">Войти</button>
+  </div>
+
+  <div id="bankPanel" style="display:none">
+    <div class="balance">Баланс: <span id="balance">0</span> 💵</div>
+
+    <h3>📤 Перевод</h3>
+    <input type="text" id="toUser" placeholder="Кому (@username)">
+    <input type="number" id="amount" placeholder="Сколько">
+    <button onclick="transferMoney()">Перевести</button>
+
+    <div id="message"></div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBHrhc1BYxFkcy03G3CPupBY2xtJ3s1hsg",
+      authDomain: "bankapp-75932.firebaseapp.com",
+      projectId: "bankapp-75932",
+      storageBucket: "bankapp-75932.appspot.com",
+      messagingSenderId: "217942407647",
+      appId: "1:217942407647:web:dd46ecb6f827dbc7c8ec6a",
+      measurementId: "G-ZXRZHCVZES"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let currentUser = "";
+
+    async function loadBalance() {
+      currentUser = document.getElementById("username").value.trim();
+      if (!currentUser.startsWith("@")) return alert("Введите ник с @");
+
+      const ref = doc(db, "users", currentUser);
+      const snap = await getDoc(ref);
+
+      if (!snap.exists()) {
+        await setDoc(ref, { balance: 1000 }); // стартовый баланс
+        document.getElementById("balance").textContent = "1000";
+      } else {
+        document.getElementById("balance").textContent = snap.data().balance;
+      }
+
+      document.getElementById("bankPanel").style.display = "block";
+    }
+
+    async function transferMoney() {
+      const toUser = document.getElementById("toUser").value.trim();
+      const amount = parseInt(document.getElementById("amount").value);
+      const message = document.getElementById("message");
+      message.textContent = "";
+
+      if (!toUser.startsWith("@") || amount <= 0 || currentUser === toUser) {
+        message.textContent = "Неверные данные для перевода.";
+        return;
+      }
+
+      try {
+        const fromRef = doc(db, "users", currentUser);
+        const toRef = doc(db, "users", toUser);
+
+        await runTransaction(db, async (transaction) => {
+          const fromSnap = await transaction.get(fromRef);
+          const toSnap = await transaction.get(toRef);
+
+          const fromBalance = fromSnap.data().balance || 0;
+          const toBalance = toSnap.exists() ? toSnap.data().balance : 0;
+
+          if (fromBalance < amount) throw new Error("Недостаточно средств");
+
+          transaction.set(toRef, { balance: toBalance + amount }, { merge: true });
+          transaction.update(fromRef, { balance: fromBalance - amount });
+        });
+
+        message.textContent = `Перевод ${amount}💵 → ${toUser} выполнен!`;
+        loadBalance();
+      } catch (e) {
+        message.textContent = "Ошибка перевода: " + e.message;
+      }
+    }
+
+    window.loadBalance = loadBalance;
+    window.transferMoney = transferMoney;
+  </script>
+</body>
+</html>
